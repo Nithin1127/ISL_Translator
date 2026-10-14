@@ -1,0 +1,69 @@
+# Phase 2 Walkthrough: MediaPipe & Computer Vision Foundation
+
+## Summary of Changes
+In **Phase 2**, we integrated **MediaPipe Hands** into the Python FastAPI microservice to detect hands, extract the 21 hand landmarks, and generate normalized 63-dimensional feature vectors for downstream machine learning gesture classification.
+
+---
+
+## 1. Key Components Created / Modified
+
+- **[mediapipe_engine.py](file:///d:/college/Projects/ISL_Translator/ai-service/app/ml/mediapipe_engine.py)**:
+  - `MediaPipeHandDetector` class with image decoding (`decode_base64_image`).
+  - Landmark extraction with `mp.solutions.hands.Hands`.
+  - Normalization pipeline (`normalize_landmarks`) providing translation invariance (shifted relative to wrist) and scale invariance (divided by max dimension).
+  - Flattened 63-element feature vector generator.
+- **[predict_schema.py](file:///d:/college/Projects/ISL_Translator/ai-service/app/schemas/predict_schema.py)**:
+  - `PredictRequest`: Validates base64 string.
+  - `PredictResponse`: Returns `hand_detected`, `handedness`, `landmarks_count`, `landmarks`, `normalized_landmarks`, `feature_vector`, `feature_vector_size`, and status `message`.
+- **[main.py](file:///d:/college/Projects/ISL_Translator/ai-service/app/main.py)**:
+  - Updated `POST /predict` endpoint to execute the full decoding and detection pipeline.
+- **[test_detector.py](file:///d:/college/Projects/ISL_Translator/ai-service/test_detector.py)**:
+  - Standalone verification script supporting both automated offline testing with sample images and live interactive webcam verification (`--webcam`).
+- **[sample_hand.jpg](file:///d:/college/Projects/ISL_Translator/ai-service/tests/sample_hand.jpg)**:
+  - Bundled sample hand image for deterministic local testing.
+
+---
+
+## 2. Test Execution & Output
+
+Running `python test_detector.py` produced the following verified results:
+
+```text
+============================================================
+Testing MediaPipe Hand Detection on Image: tests\sample_hand.jpg
+============================================================
+[INFO] Image loaded successfully: 1024x1024 (3 channels)
+[OK] Base64 encoding/decoding pipeline verified.
+
+----------------------------------------
+MediaPipe Pipeline Results:
+----------------------------------------
+1. Hand Detected:         YES
+2. Handedness:            Left
+3. Landmarks Extracted:   21 (expected 21)
+4. Feature Vector Size:   63 (expected 63 floats)
+5. Status Message:        Hand landmarks successfully extracted and normalized.
+
+Sample Raw Landmarks:
+   - Wrist (lm[0]):           x=0.500037, y=0.835911, z=1e-06
+   - Index Tip (lm[8]):       x=0.624663, y=0.154605, z=-0.141017
+   - Thumb Tip (lm[4]):       x=0.830378, y=0.462734, z=-0.132333
+
+Sample Normalized Features (Wrist-relative & Scaled [-1, 1]):
+   - Normalized Wrist:        x=0.0, y=0.0, z=0.0
+   - Normalized Index Tip:    x=0.172508, y=-0.943066, z=-0.195198
+   - First 6 feature values:  [0.0, 0.0, 0.0, 0.171465, -0.105988, -0.087129]
+
+[SUCCESS] ALL CHECKS PASSED: Pipeline is ready for ML training and classification!
+```
+
+---
+
+## 3. Metrics Summary
+
+| Metric | Result |
+| :--- | :--- |
+| **Hand Detected** | `True` (Correctly detects hands; returns `False` on blank/non-hand frames) |
+| **Landmarks Extracted** | `21` (Wrist to fingertip hierarchy) |
+| **Feature Vector Size** | `63` normalized float values ($21 \times 3$) |
+| **Normalization Strategy** | Translation invariant (wrist at $(0,0,0)$) and scale invariant ($[-1.0, 1.0]$) |

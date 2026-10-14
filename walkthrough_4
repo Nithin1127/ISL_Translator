@@ -1,0 +1,77 @@
+# Phase 4 Walkthrough: Node.js Express ⟷ Python FastAPI AI Bridge
+
+## Summary of Changes
+In **Phase 4**, the Node.js Express API Gateway was connected to the Python FastAPI AI microservice over HTTP REST, exposing `POST /api/predict` to receive base64 camera frames from frontend clients, forward them to the Python inference pipeline, and return real-time ISL alphabet predictions (`A`–`Z`) with confidence scores.
+
+---
+
+## 1. Key Components Created / Modified
+
+- **[aiService.js](file:///d:/college/Projects/ISL_Translator/server/src/services/aiService.js)**:
+  - Dynamically reads `process.env.AI_SERVICE_URL` (defaulting to `http://127.0.0.1:8000`).
+  - Dispatches `POST /predict` requests with 10-second timeout handling.
+- **[predictController.js](file:///d:/college/Projects/ISL_Translator/server/src/controllers/predictController.js)**:
+  - Validates `req.body.image` (rejects missing/empty frames with HTTP 400).
+  - Forwards frame to Python and returns prediction payload.
+  - Implements defensive error boundaries:
+    - `ECONNREFUSED` $\to$ HTTP 503 Service Unavailable (clear notification when Python is offline).
+    - `ECONNABORTED` / timeout $\to$ HTTP 504 Gateway Timeout.
+    - Upstream errors $\to$ forwards status code and message.
+- **[predictRoutes.js](file:///d:/college/Projects/ISL_Translator/server/src/routes/predictRoutes.js)**:
+  - Express router mounting `POST /api/predict`.
+- **[server.js](file:///d:/college/Projects/ISL_Translator/server/src/server.js)**:
+  - Mounted `/api/predict` and `/api/translate/predict` routes.
+  - Increased JSON payload body limit to `15mb` to comfortably support high-resolution base64 video frames.
+- **[client/src/services/api.js](file:///d:/college/Projects/ISL_Translator/client/src/services/api.js)**:
+  - Added `sendPredictionFrame(base64Image)` for frontend consumption.
+- **[test_bridge.js](file:///d:/college/Projects/ISL_Translator/server/tests/test_bridge.js)**:
+  - Verification script testing both the health bridge (`GET /api/health/ai`) and live prediction bridge (`POST /api/predict`).
+
+---
+
+## 2. Test Execution & Output
+
+Running `node tests/test_bridge.js` with the real ISL Letter "A" gesture image:
+
+```text
+=================================================================
+Node.js Express <-> Python FastAPI AI Bridge Test
+=================================================================
+
+[1] Testing GET /api/health/ai on Node.js gateway...
+>>> [PASS] AI Bridge is online:
+{
+  "status": "ok",
+  "message": "Successfully reached Python AI Service via REST API",
+  "aiServiceResponse": {
+    "status": "ok",
+    "service": "ISL Translator AI Service",
+    "timestamp": "2026-09-08T05:45:00.973317+00:00",
+    "environment": "development",
+    "model_loaded": true
+  }
+}
+
+[2] Testing POST /api/predict with ISL Letter A (Letters\A.jpg)...
+>>> [PASS] Received prediction response from Node.js:
+{
+  "success": true,
+  "hand_detected": true,
+  "prediction": "A",
+  "sign": "A",
+  "confidence": 1.0,
+  "landmarks_count": 21,
+  "feature_vector_size": 63,
+  "message": "Sign recognized as 'A' (confidence: 1.0)"
+}
+
+🎉 BRIDGE VERIFIED: Node successfully received sign 'A' with confidence 1 from Python!
+```
+
+---
+
+## 3. Graceful Error & Fallback Checks
+
+- **Blank / Non-Hand Frame**: Returns `success: true`, `hand_detected: false`, `prediction: null`, `confidence: null` with status 200 without crashing.
+- **Missing Image Payload**: Returns HTTP 400 Bad Request with informative validation error.
+- **Python Service Down**: Returns HTTP 503 Service Unavailable with instructions that Python service is offline.

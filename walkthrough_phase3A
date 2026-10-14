@@ -1,0 +1,44 @@
+# Phase 3A Walkthrough: Dataset Integration & Training Pipeline Preparation
+
+In **Phase 3A**, we implemented the offline machine-learning dataset preparation and training scaffold for the ISL alphabet (A–Z) dataset.
+
+---
+
+## 1. Key Components Created
+
+### A. [prepare_dataset.py](file:///d:/college/Projects/ISL_Translator/ai-service/training/prepare_dataset.py)
+- **Folder Discovery**: Automatically detects class folders (`A`, `B`, ..., `Z`) or nested pre-split folders.
+- **Landmark Extraction**: Reuses the exact `MediaPipeHandDetector` from `app.ml.mediapipe_engine`.
+- **Feature Vector**: Extracts 63-dimensional normalized $(x, y, z)$ coordinates relative to the wrist for each image.
+- **Dataset Splitting**: Performs a stratified split (70% train, 15% validation, 15% test).
+- **Dual Export Formats**:
+  - **CSV**: `train.csv`, `val.csv`, `test.csv` (schema: `label,f0,f1,...,f62`).
+  - **NumPy**: `dataset_splits.npz` containing compressed arrays `X_train`, `y_train`, `X_val`, `y_val`, `X_test`, `y_test`, `classes`.
+- **Metadata**: Generates `metadata.json` documenting class distributions, sample counts, and detection success rates.
+
+### B. [train_model.py](file:///d:/college/Projects/ISL_Translator/ai-service/training/train_model.py)
+- **Scikit-learn Scaffold**: `RandomForestClassifier` with balanced class weights and multi-core parallelism.
+- **Evaluation**: Computes validation accuracy, test accuracy, classification reports, and confusion matrices.
+- **Artifact Serialization**: Saves model weights (`isl_model.pkl`), index-to-label mappings (`labels.json`), and run summary (`model_metadata.json`) into `app/ml/model_data/`.
+- **Safety**: By default, it runs in inspection/scaffold mode and does **not** train until explicitly invoked with `--train`.
+
+### C. [dataset/README.md](file:///d:/college/Projects/ISL_Translator/ai-service/training/dataset/README.md)
+- Complete guide on directory organization, dataset preparation, and model training.
+
+---
+
+## 2. Verification
+
+1. **`prepare_dataset.py` execution check**:
+   ```powershell
+   cd ai-service\training
+   ..\.venv\Scripts\python.exe prepare_dataset.py
+   ```
+   **Result**: Detected empty raw folder, exited with code 0, and printed the expected directory hierarchy and options.
+
+2. **`train_model.py` execution check**:
+   ```powershell
+   cd ai-service\training
+   ..\.venv\Scripts\python.exe train_model.py
+   ```
+   **Result**: Verified configuration variables (`DEFAULT_PROCESSED_DATA_DIR`, `DEFAULT_MODEL_OUTPUT_DIR`), checked data directory status, and reported readiness without training.

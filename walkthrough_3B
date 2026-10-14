@@ -1,0 +1,124 @@
+# Phase 3B Walkthrough: Model Inference Integration into FastAPI
+
+## Summary of Changes
+In **Phase 3B**, the trained **RandomForestClassifier** (trained on 16,235 RealSign samples with **91.60% test accuracy**) was integrated into the Python FastAPI microservice to deliver real-time Indian Sign Language alphabet classification (`A`–`Z`) via the `POST /predict` endpoint.
+
+---
+
+## 1. Key Components Created / Modified
+
+- **[classifier.py](file:///d:/college/Projects/ISL_Translator/ai-service/app/ml/classifier.py)**:
+  - `GestureClassifier` class: loads `isl_model.pkl` and `labels.json` from `app/ml/model_data/`.
+  - Computes predicted alphabet class and confidence probability (`predict_proba`).
+  - Provides a singleton `get_gesture_classifier()`.
+- **[predict_schema.py](file:///d:/college/Projects/ISL_Translator/ai-service/app/schemas/predict_schema.py)**:
+  - Updated `PredictResponse` to include `prediction` (e.g. `"A"`), `sign`, and `confidence` (e.g. `0.87`).
+- **[main.py](file:///d:/college/Projects/ISL_Translator/ai-service/app/main.py)**:
+  - Warm-loads both MediaPipe and the trained Random Forest classifier at server startup.
+  - `/health` endpoint reports `model_loaded: true`.
+  - `/predict` endpoint:
+    1. Decodes base64 image frame.
+    2. Runs MediaPipe hand detection and normalizes the 21 landmarks into 63 features.
+    3. If no hand is detected, returns `success: true`, `hand_detected: false`, `prediction: null`, `confidence: null` cleanly.
+    4. If a hand is detected, passes the 63 normalized coordinates to the Random Forest model and returns the classified sign letter and confidence score.
+- **[test_predict_endpoint.py](file:///d:/college/Projects/ISL_Translator/ai-service/test_predict_endpoint.py)**:
+  - Automated test suite verifying `/health`, `/predict` with `sample_hand.jpg`, `/predict` with `Letters/A.jpg`, and `/predict` with empty non-hand frames.
+- **[test_detector.py](file:///d:/college/Projects/ISL_Translator/ai-service/test_detector.py)**:
+  - Updated standalone test script to output classification predictions alongside landmark coordinates.
+
+---
+
+## 2. Test Execution & Output
+
+Running `python test_predict_endpoint.py` produced the following verified results:
+
+```text
+=================================================================
+ISL Prediction Endpoint Verification Test (/predict & /health)
+=================================================================
+
+[TEST 1] Testing health_check()...
+Response:
+{
+  "status": "ok",
+  "service": "ISL Translator AI Service",
+  "timestamp": "2026-09-08T05:31:05.588850+00:00",
+  "environment": "development",
+  "model_loaded": true
+}
+>>> [PASS] Health check confirms model is loaded.
+
+[TEST 2] Testing /predict with sample hand image (sample_hand.jpg)...
+Response:
+{
+  "success": true,
+  "hand_detected": true,
+  "prediction": "M",
+  "sign": "M",
+  "confidence": 0.51,
+  "landmarks_count": 21,
+  "feature_vector_size": 63,
+  "message": "Sign recognized as 'M' (confidence: 0.51)"
+}
+>>> [PASS] Hand detected! Predicted: 'M' (confidence: 0.51)
+
+[TEST 3] Testing /predict with real ISL sign gesture (Letter A)...
+Response:
+{
+  "success": true,
+  "hand_detected": true,
+  "prediction": "A",
+  "confidence": 0.87,
+  "landmarks_count": 21,
+  "message": "Sign recognized as 'A' (confidence: 0.87)"
+}
+>>> [PASS] Real ISL sign gesture correctly classified as 'A' with confidence 0.87!
+
+[TEST 4] Testing /predict with non-hand blank canvas (empty frame test)...
+Response:
+{
+  "success": true,
+  "hand_detected": false,
+  "prediction": null,
+  "confidence": null,
+  "landmarks_count": 0,
+  "message": "No hand detected in the provided image."
+}
+>>> [PASS] Gracefully returns hand_detected: false without error or crash.
+
+=================================================================
+[SUCCESS] ALL ENDPOINT TESTS PASSED!
+=================================================================
+```
+
+---
+
+## 3. Live HTTP API Test Verification
+
+Also verified via live HTTP POST request to `http://127.0.0.1:8000/predict`:
+
+```json
+{
+  "success": true,
+  "hand_detected": true,
+  "prediction": "A",
+  "sign": "A",
+  "confidence": 0.87,
+  "handedness": "Left",
+  "landmarks_count": 21,
+  "feature_vector_size": 63,
+  "message": "Sign recognized as 'A' (confidence: 0.87)"
+}
+```
+And Node.js bridge `GET http://localhost:5000/api/health/ai` confirms:
+```json
+{
+  "status": "ok",
+  "message": "Successfully reached Python AI Service via REST API",
+  "aiServiceResponse": {
+    "status": "ok",
+    "service": "ISL Translator AI Service",
+    "model_loaded": true
+  }
+}
+```
