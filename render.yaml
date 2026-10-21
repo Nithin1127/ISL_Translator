@@ -1,0 +1,60 @@
+# render.yaml — Render IaC Blueprint
+# Deploys two Web Services:
+#   1. isl-ai-service  — Python FastAPI (MediaPipe + RandomForest)
+#   2. isl-gateway     — Node.js Express API Gateway
+#
+# To deploy:
+#   1. Push this repo to GitHub.
+#   2. Go to https://dashboard.render.com → New → Blueprint.
+#   3. Connect your GitHub repo.
+#   4. Render reads this file and creates both services automatically.
+#   5. After the first deploy, add the secret env vars in each service's
+#      "Environment" tab (see comments below marked "SECRET — add in Render UI").
+
+services:
+  # ── 1. Python AI Service (FastAPI + MediaPipe + scikit-learn) ──────────────
+  - type: web
+    name: isl-ai-service
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    plan: free                # upgrade to "starter" if you need always-on
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000           # Render free tier always uses port 10000 internally
+      - key: ENVIRONMENT
+        value: production
+      # Allow requests from the Node gateway and the Vercel frontend
+      # SECRET — Replace the placeholder with your real URLs in the Render UI
+      - key: CORS_ORIGINS
+        value: https://isl-gateway.onrender.com,https://client-kappa-three-20.vercel.app
+
+  # ── 2. Node.js Express Gateway ─────────────────────────────────────────────
+  - type: web
+    name: isl-gateway
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 10000           # Render free tier always uses port 10000 internally
+      - key: NODE_ENV
+        value: production
+      # Internal URL of the AI service deployed above (Render resolves by service name)
+      - key: AI_SERVICE_URL
+        value: https://isl-ai-service.onrender.com
+      # Vercel frontend origin — update if your Vercel URL changes
+      - key: CLIENT_ORIGIN
+        value: https://client-kappa-three-20.vercel.app
+      # SECRET env vars — add these in the Render UI → Environment tab:
+      #   MONGODB_URI   — your MongoDB Atlas connection string
+      #   JWT_SECRET    — a strong random secret (min 32 chars)
+      - key: MONGODB_URI
+        sync: false            # tells Render this is a secret; set it in the UI
+      - key: JWT_SECRET
+        sync: false
